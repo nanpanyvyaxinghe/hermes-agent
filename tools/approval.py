@@ -330,7 +330,15 @@ def load_permanent_allowlist() -> set:
     try:
         from hermes_cli.config import load_config_readonly
         config = load_config_readonly()
-        patterns = set(config.get("command_allowlist", []) or [])
+        configured = config.get("command_allowlist", []) or []
+        if isinstance(configured, str):
+            logger.warning(
+                "Ignoring string-valued command_allowlist; expected a list. "
+                "This may have been written by an older `hermes config set`; "
+                "re-set command_allowlist using a list value."
+            )
+            return set()
+        patterns = set(configured)
         if patterns:
             load_permanent(patterns)
         return patterns
@@ -467,7 +475,7 @@ _CRON_CTX = _Unattended(
 
 def _unattended_contexts() -> list[_Unattended]:
     """Active unattended contexts in evaluation order: single-query first (``hermes chat -q``
-    exports HERMES_INTERACTIVE=1 but nobody answers); cron beats a platform marker because
+    exports HERMES_INTERACTIVE=1 but nobody answers prompts); cron beats a platform marker because
     cron binds the platform for delivery routing only."""
     contexts = []
     if _is_single_query_approval_context():
