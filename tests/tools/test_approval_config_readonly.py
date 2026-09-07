@@ -12,6 +12,8 @@ so they now use load_config_readonly() — the API built for exactly this
 These tests drive the REAL functions against a temp HERMES_HOME config
 (AGENTS.md: E2E with real imports), not mocks of the seam under test.
 """
+import logging
+
 import pytest
 
 import hermes_cli.config as hc
@@ -100,3 +102,22 @@ def test_readers_return_live_cache_without_corrupting_it(
     _load_security_config()
     assert _get_approval_config() == before
     assert hc.load_config_readonly()["approvals"]["mode"] == "manual"
+
+
+def test_string_command_allowlist_is_rejected_instead_of_split_into_characters(
+        config_home, caplog):
+    """Pre-#88163 config-set could persist a list literal as a YAML string.
+    Loading that stale value must not turn it into a set of one-character approvals."""
+    (config_home / "config.yaml").write_text(
+        "model:\n  default: test-model\n"
+        "approvals:\n  mode: manual\n  timeout: 300\n  cron_mode: deny\n"
+        "command_allowlist: '[\"shell_exec\", \"git_push\"]'\n"
+        "security:\n  tirith_enabled: false\n"
+    )
+    hc._LOAD_CONFIG_CACHE.clear()
+
+    with caplog.at_level(logging.WARNING, logger="tools.approval"):
+        assert load_permanent_allowlist() == set()
+
+    assert "string-valued command_allowlist" in caplog.text
+    assert "shell_exec" not in load_permanent_allowlist()
